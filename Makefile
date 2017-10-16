@@ -1,7 +1,7 @@
 all: target
 
 target: main.cu
-	nvcc main.cu -lcusolver -o main
+	nvcc --gpu-architecture=compute_60 --gpu-code=sm_60 main.cu -lcusolver -o main
 
 deviceinfo: deviceInfo.cu
 	nvcc deviceInfo.cu -o deviceInfo
