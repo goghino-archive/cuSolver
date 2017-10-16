@@ -4,8 +4,6 @@
 */
 
 #include <stdio.h>
-#include <iostream>
-#include <fstream>
 #include <stdlib.h>
 #include <assert.h>
 #include <cuda_runtime.h>
@@ -18,6 +16,16 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    {
       fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
       if (abort) exit(code);
+   }
+}
+
+#define cpuErrchk(ans) { cpuAssert((ans), __FILE__, __LINE__); }
+inline void cpuAssert(void *ptr, const char *file, int line, bool abort=true)
+{
+   if (ptr == NULL) 
+   {
+      fprintf(stderr,"CPUassert: %s %d\n", file, line);
+      if (abort) exit(1);
    }
 }
 
@@ -35,10 +43,12 @@ void printMatrix(int m, int n, const double*A, int lda, const char* name)
 
 void loadMatrix(int nrows, int ncols, double *A, int lda, const char *filename)
 {
-    fstream fin(filename, ios::in);
-    if (fin.fail())
+    FILE *f = NULL;
+    f = fopen(filename, "r");
+
+    if (f == NULL)
     {
-        cout << "failed to open file: \"" << filename << "\" for loading" << endl;
+        fprintf(stderr, "Failed to open file: %s for loading\n", filename);
         exit(1);
     }
 
@@ -46,11 +56,11 @@ void loadMatrix(int nrows, int ncols, double *A, int lda, const char *filename)
     {
         for (size_t j = 0; j < ncols; j++)
         {
-            fin >> A[i + j*lda];
+            fscanf(f, "%lf", &A[i + j*lda]);
         }
     }
 
-    fin.close();
+    fclose(f);
 }
 
 /*    | 1 2 3 | 
@@ -69,18 +79,29 @@ void loadMatrix(int nrows, int ncols, double *A, int lda, const char *filename)
 
 int main(int argc, char*argv[]) 
 {
-    const int m = 3; 
+    if (argc != 4)
+     {
+         fprintf(stderr, "Usage: srun %s N A.mat RHS.mat\n", argv[0]);
+         return -1;
+     }
+
+    int x = atoi(argv[1]);
+
+    const int m = x; 
     const int lda = m; 
     const int ldb = m;
 
-    double A[lda*m] = { 1.0, 4.0, 7.0, 2.0, 5.0, 8.0, 3.0, 6.0, 10.0}; 
-    double B[m] = { 1.0, 2.0, 3.0 }; 
-    double X[m]; /* X = A\B */ 
-    double LU[lda*m]; /* L and U */ 
-    int Ipiv[m]; /* host copy of pivoting sequence */ 
+    double *A = (double *) malloc(lda*m * sizeof(double)); cpuErrchk(A);
+    double *B = (double *) malloc(m * sizeof(double)); cpuErrchk(B);
+    double *X = (double *) malloc(m * sizeof(double)); cpuErrchk(X); /* X = A\B */ 
+    double *LU = (double *) malloc(lda*m * sizeof(double)); cpuErrchk(LU); /* L and U */ 
+    int *Ipiv = (int *) malloc(m * sizeof(int)); cpuErrchk(Ipiv); /* host copy of pivoting sequence */ 
     int info = 0; /* host copy of error info */ 
     double *d_A = NULL; /* device copy of A */ 
     double *d_B = NULL; /* device copy of B */ 
+
+    loadMatrix(m, m, A, lda, argv[2]);
+    loadMatrix(m, 1, B, lda, argv[3]);
 
     printf("example of getrf \n"); 
 
@@ -177,7 +198,7 @@ int main(int argc, char*argv[])
 
     int nrhs = 1;
     cublasOperation_t trans = CUBLAS_OP_N; //consider normal A, do not transpose
-    status = cusolverDnDgetrs( cusolverH, CUBLAS_OP_N, m, nrhs, d_A, lda, d_Ipiv, d_B, ldb, d_info); 
+    status = cusolverDnDgetrs( cusolverH, trans, m, nrhs, d_A, lda, d_Ipiv, d_B, ldb, d_info); 
 
     cudaStat1 = cudaDeviceSynchronize();
     assert(CUSOLVER_STATUS_SUCCESS == status); 
@@ -192,6 +213,11 @@ int main(int argc, char*argv[])
     printf("=====\n");
 
      /* free resources */ 
+    free(A);
+    free(B);
+    free(X);
+    free(LU);
+    free(Ipiv);
     if (d_A ) cudaFree(d_A); 
     if (d_B ) cudaFree(d_B); 
     if (d_Ipiv ) cudaFree(d_Ipiv); 
