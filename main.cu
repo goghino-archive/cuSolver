@@ -63,6 +63,43 @@ void loadMatrix(int nrows, int ncols, double *A, int lda, const char *filename)
     fclose(f);
 }
 
+double residual(int N, double *X, const char *f_A, const char* f_B)
+{
+    // reload A and B
+    double *A = (double *) malloc(N*N * sizeof(double)); cpuErrchk(A);
+    double *B = (double *) malloc(N * sizeof(double)); cpuErrchk(B);
+
+    loadMatrix(N, N, A, N, f_A);
+    loadMatrix(N, 1, B, N, f_B);
+
+    // compute residual
+    double *res = (double *) malloc(N * sizeof(double)); cpuErrchk(res);
+    for (int i = 0; i < N; i++) {
+        res[i] = 0;
+    }
+    
+    // res = A*x - b
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            res[j] += A[i*N + j] * X[i];
+        }
+        res[i] -= B[i];
+    }
+    
+    // norms
+    double normr = 0.;
+    double normb = 0.;
+    for (int i = 0; i < N; i++) {
+        normr += res[i]*res[i];
+        normb += B[i]*B[i];
+    }
+    
+    normr = sqrt(normr);
+    normb = sqrt(normb);
+
+    return normr/normb;
+}
+
 /*    | 1 2 3 | 
 * A = | 4 5 6 | 
 *     | 7 8 10 | 
@@ -105,12 +142,15 @@ int main(int argc, char*argv[])
 
     printf("example of getrf \n"); 
 
-    printf("A = (matlab base-1)\n"); 
-    printMatrix(m, m, A, lda, "A"); 
-    printf("=====\n"); 
-    printf("B = (matlab base-1)\n"); 
-    printMatrix(m, 1, B, ldb, "B"); 
-    printf("=====\n");
+    if (m < 10)
+    {
+        printf("A = (matlab base-1)\n"); 
+        printMatrix(m, m, A, lda, "A"); 
+        printf("=====\n"); 
+        printf("B = (matlab base-1)\n"); 
+        printMatrix(m, 1, B, ldb, "B"); 
+        printf("=====\n");
+    }
 
     cudaStream_t stream = NULL;
     cusolverStatus_t status = CUSOLVER_STATUS_SUCCESS;
@@ -178,16 +218,20 @@ int main(int argc, char*argv[])
     // print pivots
     cudaStat1 = cudaMemcpy(Ipiv , d_Ipiv, sizeof(int)*m, cudaMemcpyDeviceToHost);
     gpuErrchk(cudaStat1);
-    printf("pivoting sequence, matlab base-1\n"); 
-    for(int j = 0 ; j < m ; j++){ 
-        printf("Ipiv(%d) = %d\n", j+1, Ipiv[j]); 
+
+    if (m < 10)
+    {
+        printf("pivoting sequence, matlab base-1\n"); 
+        for(int j = 0 ; j < m ; j++){ 
+            printf("Ipiv(%d) = %d\n", j+1, Ipiv[j]); 
+        }
+
+        printf("L and U = (matlab base-1)\n"); 
+        cudaStat2 = cudaMemcpy(LU , d_A , sizeof(double)*lda*m, cudaMemcpyDeviceToHost);
+        gpuErrchk(cudaStat2);
+        printMatrix(m, m, LU, lda, "LU");
+        printf("=====\n");
     }
-    
-    printf("L and U = (matlab base-1)\n"); 
-    cudaStat2 = cudaMemcpy(LU , d_A , sizeof(double)*lda*m, cudaMemcpyDeviceToHost);
-    gpuErrchk(cudaStat2);
-    printMatrix(m, m, LU, lda, "LU");
-    printf("=====\n");
 
 
     /* * step 5: solve A*X = B 
@@ -208,9 +252,14 @@ int main(int argc, char*argv[])
     cudaStat1 = cudaMemcpy(X , d_B, sizeof(double)*m, cudaMemcpyDeviceToHost); 
     assert(cudaSuccess == cudaStat1); 
 
-    printf("X = (matlab base-1)\n"); 
-    printMatrix(m, 1, X, ldb, "X");
-    printf("=====\n");
+    if (m < 10)
+    {
+        printf("X = (matlab base-1)\n"); 
+        printMatrix(m, 1, X, ldb, "X");
+        printf("=====\n");
+    }
+
+    printf("[cuSolve]: ||Ax - b|| / ||b|| = %e\n", residual(m, X, argv[2], argv[3]));
 
      /* free resources */ 
     free(A);
