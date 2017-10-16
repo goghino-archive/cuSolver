@@ -159,8 +159,10 @@ int main(int argc, char*argv[])
     cudaError_t cudaStat3 = cudaSuccess; 
     cudaError_t cudaStat4 = cudaSuccess; 
 
+    /* ------------------------------------------------------------- */
     /* step 1: create cusolver handle, alternatively bind a stream 
        cuSolverDN library was designed to solve dense linear systems */
+    /* ------------------------------------------------------------- */
     cusolverDnHandle_t cusolverH = NULL;
     status = cusolverDnCreate(&cusolverH);
     assert(CUSOLVER_STATUS_SUCCESS == status);
@@ -173,20 +175,40 @@ int main(int argc, char*argv[])
     // status = cusolverDnSetStream(cusolverH, stream);
     // assert(CUSOLVER_STATUS_SUCCESS == status);
 
-    /* step 2: allocate device memory and copy A to device */ 
+    // Timing using CUDA Events
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    float time_solve = 0.;
+    float time_memory1 = 0.;
+    float time_memory2 = 0.;
+
+    /* --------------------------------------------------- */
+    /* step 2: allocate device memory and copy A to device */
+    /* --------------------------------------------------- */ 
+
     cudaStat1 = cudaMalloc ((void**)&d_A, sizeof(double) * lda * m); 
     gpuErrchk(cudaStat1); 
     cudaStat2 = cudaMalloc ((void**)&d_B, sizeof(double) * m); 
     gpuErrchk(cudaStat2);
     
+    cudaEventRecord(start);
+
     cudaStat1 = cudaMemcpy(d_A, A, sizeof(double)*lda*m, cudaMemcpyHostToDevice); 
     gpuErrchk(cudaStat1); 
     cudaStat2 = cudaMemcpy(d_B, B, sizeof(double)*m, cudaMemcpyHostToDevice); 
     gpuErrchk(cudaStat2);
 
+    //get the timig
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&time_memory1, start, stop);
+
+    /* ------------------------------------------------------------- */
     /* step 3: query working space of getrf 
        helper functions calculate the size of work buffers needed
        D = double precision */
+    /* ------------------------------------------------------------- */
     int lwork = 0; /* size of workspace */ 
     status = cusolverDnDgetrf_bufferSize( cusolverH, m, m, d_A, lda, &lwork); 
     assert(CUSOLVER_STATUS_SUCCESS == status); 
@@ -194,7 +216,11 @@ int main(int argc, char*argv[])
     cudaStat1 = cudaMalloc((void**)&d_work, sizeof(double)*lwork); 
     assert(cudaSuccess == cudaStat1);
 
+    /* ------------------------------------------------------------- */
     /* step 4: LU factorization */
+    /* ------------------------------------------------------------- */
+    cudaEventRecord(start);
+
     int *d_Ipiv = NULL; /* pivoting sequence */ 
     cudaStat3 = cudaMalloc ((void**)&d_Ipiv, sizeof(int) * m); 
     gpuErrchk(cudaStat3);
@@ -214,13 +240,13 @@ int main(int argc, char*argv[])
         printf("%d-th parameter is wrong \n", -info); 
         exit(1); 
     } 
-
-    // print pivots
-    cudaStat1 = cudaMemcpy(Ipiv , d_Ipiv, sizeof(int)*m, cudaMemcpyDeviceToHost);
-    gpuErrchk(cudaStat1);
-
+    
     if (m < 10)
     {
+        // print pivots
+        cudaStat1 = cudaMemcpy(Ipiv , d_Ipiv, sizeof(int)*m, cudaMemcpyDeviceToHost);
+        gpuErrchk(cudaStat1);
+
         printf("pivoting sequence, matlab base-1\n"); 
         for(int j = 0 ; j < m ; j++){ 
             printf("Ipiv(%d) = %d\n", j+1, Ipiv[j]); 
@@ -234,11 +260,13 @@ int main(int argc, char*argv[])
     }
 
 
+    /* ------------------------------------------------------------- */
     /* * step 5: solve A*X = B 
      *     | 1 |      | -0.3333 | 
      * B = | 2 |, X = | 0.6667 | 
      *     | 3 |      | 0 | 
      */
+     /* ------------------------------------------------------------- */
 
     int nrhs = 1;
     cublasOperation_t trans = CUBLAS_OP_N; //consider normal A, do not transpose
@@ -248,9 +276,21 @@ int main(int argc, char*argv[])
     assert(CUSOLVER_STATUS_SUCCESS == status); 
     assert(cudaSuccess == cudaStat1); 
 
+    //get the timig 
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&time_solve, start, stop);
+
+    cudaEventRecord(start);
+    
     // copy back the result
     cudaStat1 = cudaMemcpy(X , d_B, sizeof(double)*m, cudaMemcpyDeviceToHost); 
     assert(cudaSuccess == cudaStat1); 
+
+    //get the timig
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&time_memory2, start, stop);
 
     if (m < 10)
     {
@@ -260,6 +300,8 @@ int main(int argc, char*argv[])
     }
 
     printf("[cuSolve]: ||Ax - b|| / ||b|| = %e\n", residual(m, X, argv[2], argv[3]));
+    printf("[cuSolve]: Solve took %e ms\n", time_solve);
+    printf("[cuSolve]: Memory transfers took %e ms\n", time_memory1 + time_memory2);
 
      /* free resources */ 
     free(A);
@@ -274,6 +316,8 @@ int main(int argc, char*argv[])
     if (d_work ) cudaFree(d_work); 
     if (cusolverH ) cusolverDnDestroy(cusolverH); 
     if (stream ) cudaStreamDestroy(stream); 
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
     cudaDeviceReset(); 
 
     return 0; 
