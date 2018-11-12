@@ -1,10 +1,12 @@
-all: target
+all: target deviceinfo
+
+CUFLAGS = -O3
 
 target: main.cu
-	nvcc --gpu-architecture=compute_60 --gpu-code=sm_60 main.cu -lcusolver -o main
+	nvcc $(CUFLAGS) main.cu -lcusolver -o main
 
 deviceinfo: deviceInfo.cu
-	nvcc deviceInfo.cu -o deviceInfo
+	nvcc $(CUFLAGS) deviceInfo.cu -o deviceInfo
 
 clean:
 	rm main

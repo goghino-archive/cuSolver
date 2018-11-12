@@ -63,15 +63,8 @@ void loadMatrix(int nrows, int ncols, double *A, int lda, const char *filename)
     fclose(f);
 }
 
-double residual(int N, double *X, const char *f_A, const char* f_B)
+double residual(int N, double *X, double *A, double* B)
 {
-    // reload A and B
-    double *A = (double *) malloc(N*N * sizeof(double)); cpuErrchk(A);
-    double *B = (double *) malloc(N * sizeof(double)); cpuErrchk(B);
-
-    loadMatrix(N, N, A, N, f_A);
-    loadMatrix(N, 1, B, N, f_B);
-
     // compute residual
     double *res = (double *) malloc(N * sizeof(double)); cpuErrchk(res);
     for (int i = 0; i < N; i++) {
@@ -100,6 +93,16 @@ double residual(int N, double *X, const char *f_A, const char* f_B)
     return normr/normb;
 }
 
+void generateMatrix(int nrows, int ncols, double *A, int lda)
+{
+    for (int i = 0; i < nrows; i++) {
+        for (int j = 0; j < ncols; j++) {
+            A[i*lda + j] = rand()/(double)RAND_MAX;
+        }
+    }
+}
+
+
 /*    | 1 2 3 | 
 * A = | 4 5 6 | 
 *     | 7 8 10 | 
@@ -116,9 +119,9 @@ double residual(int N, double *X, const char *f_A, const char* f_B)
 
 int main(int argc, char*argv[]) 
 {
-    if (argc != 4)
+    if (argc != 4 && argc != 2)
      {
-         fprintf(stderr, "Usage: srun %s N A.mat RHS.mat\n", argv[0]);
+         fprintf(stderr, "Usage: srun %s N [A.mat RHS.mat]\n", argv[0]);
          return -1;
      }
 
@@ -137,8 +140,15 @@ int main(int argc, char*argv[])
     double *d_A = NULL; /* device copy of A */ 
     double *d_B = NULL; /* device copy of B */ 
 
-    loadMatrix(m, m, A, lda, argv[2]);
-    loadMatrix(m, 1, B, lda, argv[3]);
+    if (argc == 4)
+    {
+        loadMatrix(m, m, A, lda, argv[2]);
+        loadMatrix(m, 1, B, lda, argv[3]);
+    } else
+    {
+        generateMatrix(m, m, A, lda);
+        generateMatrix(m, 1, B, 1);
+    }
 
     printf("example of getrf \n"); 
 
@@ -299,7 +309,7 @@ int main(int argc, char*argv[])
         printf("=====\n");
     }
 
-    printf("[cuSolve]: ||Ax - b|| / ||b|| = %e\n", residual(m, X, argv[2], argv[3]));
+    printf("[cuSolve]: ||Ax - b|| / ||b|| = %e\n", residual(m, X, A, B));
     printf("[cuSolve]: Solve took %e ms\n", time_solve);
     printf("[cuSolve]: Memory transfers took %e ms\n", time_memory1 + time_memory2);
 

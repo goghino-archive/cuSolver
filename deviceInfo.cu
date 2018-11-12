@@ -34,14 +34,14 @@ int main(int argc, char ** argv) {
         }
 
                 printf("For device #%d\n", dev); 
-                printf("Device name:                %s\n", deviceProp.name); 
-                printf("Major revision number:      %d\n", deviceProp.major);
-                printf("Minor revision Number:      %d\n", deviceProp.minor); 
-                printf("Total Global Memory:        %d\n", deviceProp.totalGlobalMem);
-                printf("Total shared mem per block: %d\n", deviceProp.sharedMemPerBlock); 
-                printf("Total const mem size:       %d\n", deviceProp.totalConstMem); 
-                printf("Warp size:                  %d\n", deviceProp.warpSize); 
-                printf("Maximum block dimensions:   %d x %d x %d\n", deviceProp.maxThreadsDim[0], \
+                printf("Device name:                    %s\n", deviceProp.name); 
+                printf("Major revision number:          %d\n", deviceProp.major);
+                printf("Minor revision Number:          %d\n", deviceProp.minor); 
+                printf("Total Global Memory (B):        %u\n", deviceProp.totalGlobalMem);
+                printf("Total shared mem per block (B): %u\n", deviceProp.sharedMemPerBlock); 
+                printf("Total const mem size (B):       %u\n", deviceProp.totalConstMem); 
+                printf("Warp size:                      %d\n", deviceProp.warpSize); 
+                printf("Maximum block dimensions:       %d x %d x %d\n", deviceProp.maxThreadsDim[0], \
                                                                                                           deviceProp.maxThreadsDim[1], \
                                                                                                           deviceProp.maxThreadsDim[2]); 
 
